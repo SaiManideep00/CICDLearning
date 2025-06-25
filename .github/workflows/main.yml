@@ -1,0 +1,73 @@
+name: BranchValidation & CodeBuild.
+ 
+on:
+  push:
+    branches:
+      - dev
+      - stg
+      - prd
+  pull_request:
+    branches:
+      - dev
+      - stg
+      - prd
+      - main
+ 
+permissions:
+  contents: read
+  actions: write
+  pull-requests: write
+ 
+jobs:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR Source Branch
+        run: |
+          echo "SOURCE BRANCH: ${{ github.head_ref }}"
+          echo "TARGET BRANCH: ${{ github.base_ref }}"
+ 
+          if [[ "${{ github.base_ref }}" == "dev" ]]; then
+            if [[ ! "${{ github.head_ref }}" =~ ^(feature|bug|fix)/.+$ ]]; then
+              echo "Branch name must start with 'feature/', 'bug/', or 'fix/' when PR target is 'dev'"
+              exit 1
+            fi
+          fi
+          if [[ "${{ github.base_ref }}" == "stg" && "${{ github.head_ref }}" != ~ ^(promotion)/.+$ ]]; then
+           echo "Only 'promotion/' can raise PRs to 'stg'"
+            exit 1
+          fi
+          if [[ "${{ github.base_ref }}" == "prd" && "${{ github.head_ref }}" !=~ ^(release)/.+$  ]]; then
+            echo "Only 'release/' can raise PRs to 'prd'"
+            exit 1
+          fi
+          if [[ "${{ github.base_ref }}" == "main" && "${{ github.head_ref }}" != "prd" ]]; then
+            echo "Only 'prd' can raise PRs to 'main'"
+            exit 1
+          fi
+          echo "PR source branch is valid."
+ 
+  code-validate:
+    runs-on: ubuntu-latest
+    env:
+      ENV_ID: ${{ inputs.env_id }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+ 
+      - name: Set up Maven
+        uses: s4u/setup-maven-action@v1.11.0
+        with:
+          maven-version: '3.9.6'
+ 
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+ 
+      - name: Build Java CDK project
+        run: mvn clean package
+ 
+ 
